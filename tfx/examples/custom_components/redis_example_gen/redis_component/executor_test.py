@@ -23,7 +23,6 @@ import random
 
 import apache_beam as beam
 from apache_beam.testing import util
-import mock
 import redis
 from redis_component import executor
 from redis_proto import redis_config_pb2
@@ -35,17 +34,19 @@ from tfx.types import standard_artifacts
 
 from google.protobuf import json_format
 
+
 class ExecutorTestWithMock(tf.test.TestCase):
 
     def testDeserializeConnConfig(self):
         conn_config = redis_config_pb2.RedisConnConfig()
 
         deseralized_conn = executor._deserialize_conn_config(conn_config)
-        truth_conn = {'decode_responses':True}
+        truth_conn = {'decode_responses': True}
         self.assertEqual(truth_conn, deseralized_conn)
 
-
     def testRedisToExample(self):
+        redis_conn = redis.Redis()
+        redis_conn.hmset('test_record', mapping={'i': '1', 'f': '2.0', 's': 'abc'})
         with beam.Pipeline() as pipeline:
             examples = (
                     pipeline | 'ToTFExample' >> executor._RedisToExample(
@@ -59,7 +60,21 @@ class ExecutorTestWithMock(tf.test.TestCase):
                             example_gen_pb2.CustomConfig(),
                             preserving_proto_field_name=True)
                 },
-                split_pattern='record_*'))
+                split_pattern=json_format.MessageToJson(
+                    redis_hash_query_pb2.RedisHashQuery(hash_key_pattern='test_record*', schema=[
+                        {
+                            'name': 'i',
+                            'type': 'integer'
+                        },
+                        {
+                            'name': 'f',
+                            'type': 'float'
+                        },
+                        {
+                            'name': 's',
+                            'type': 'string'
+                        }
+                    ]), preserving_proto_field_name=True, including_default_value_fields=True)))
 
             feature = {}
             feature['i'] = tf.train.Feature(int64_list=tf.train.Int64List(value=[1]))
@@ -69,8 +84,8 @@ class ExecutorTestWithMock(tf.test.TestCase):
                 bytes_list=tf.train.BytesList(value=[tf.compat.as_bytes('abc')]))
             example_proto = tf.train.Example(
                 features=tf.train.Features(feature=feature))
+            print("examples = " + str(examples))
             util.assert_that(examples, util.equal_to([example_proto]))
-
 
     def testDo(self):
         output_data_dir = os.path.join(
@@ -88,86 +103,87 @@ class ExecutorTestWithMock(tf.test.TestCase):
                 json_format.MessageToJson(
                     example_gen_pb2.Input(splits=[
                         example_gen_pb2.Input.Split(
-                            name='bq', pattern= json_format.MessageToJson( redis_hash_query_pb2.RedisHashQuery(hash_key_pattern='*', schema=[
-                {
-                    'name': 'pickup_community_area',
-                    'type': 'integer'
-                },
-                {
-                    'name': 'fare',
-                    'type': 'float'
-                },
-                {
-                    'name': 'trip_start_month',
-                    'type': 'integer'
-                },
-                {
-                    'name': 'trip_start_hour',
-                    'type': 'integer'
-                },
-                {
-                    'name': 'trip_start_day',
-                    'type': 'integer'
-                },
-                {
-                    'name': 'trip_start_timestamp',
-                    'type': 'integer'
-                },
-                {
-                    'name': 'pickup_latitude',
-                    'type': 'float'
-                },
-                {
-                    'name': 'pickup_longitude',
-                    'type': 'float'
-                },
-                {
-                    'name': 'dropoff_latitude',
-                    'type': 'float'
-                },
-                {
-                    'name': 'dropoff_longitude',
-                    'type': 'float'
-                },
-                {
-                    'name': 'trip_miles',
-                    'type': 'float'
-                },
-                {
-                    'name': 'pickup_census_tract',
-                    'type': 'integer'
-                },
-                {
-                    'name':'dropoff_census_tract',
-                    'type':'float'
-                },
-                {
-                    'name': 'payment_type',
-                    'type': 'string'
-                },
-                {
-                    'name':'company',
-                    'type':'string'
-                },
-                {
-                    'name':'trip_seconds',
-                    'type':'float'
-                },
-                {
-                    'name':'dropoff_community_area',
-                    'type':'float'
-                },
-                {
-                    'name':'tips',
-                    'type':'float'
-                },
-                {
-                    'name':'big_tipper',
-                    'type':'integer'
-                }
-               ]))),
+                            name='bq', pattern=json_format.MessageToJson(
+                                redis_hash_query_pb2.RedisHashQuery(hash_key_pattern='record_*', schema=[
+                                    {
+                                        'name': 'pickup_community_area',
+                                        'type': 'integer'
+                                    },
+                                    {
+                                        'name': 'fare',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'trip_start_month',
+                                        'type': 'integer'
+                                    },
+                                    {
+                                        'name': 'trip_start_hour',
+                                        'type': 'integer'
+                                    },
+                                    {
+                                        'name': 'trip_start_day',
+                                        'type': 'integer'
+                                    },
+                                    {
+                                        'name': 'trip_start_timestamp',
+                                        'type': 'integer'
+                                    },
+                                    {
+                                        'name': 'pickup_latitude',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'pickup_longitude',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'dropoff_latitude',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'dropoff_longitude',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'trip_miles',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'pickup_census_tract',
+                                        'type': 'integer'
+                                    },
+                                    {
+                                        'name': 'dropoff_census_tract',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'payment_type',
+                                        'type': 'string'
+                                    },
+                                    {
+                                        'name': 'company',
+                                        'type': 'string'
+                                    },
+                                    {
+                                        'name': 'trip_seconds',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'dropoff_community_area',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'tips',
+                                        'type': 'float'
+                                    },
+                                    {
+                                        'name': 'big_tipper',
+                                        'type': 'integer'
+                                    }
+                                ]))),
                     ]),
-                    preserving_proto_field_name=True),
+                    preserving_proto_field_name=True, including_default_value_fields=True,),
             'custom_config':
                 json_format.MessageToJson(example_gen_pb2.CustomConfig()),
             'output_config':
